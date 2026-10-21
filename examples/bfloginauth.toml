@@ -1,0 +1,42 @@
+# bfloginauth configuration
+#
+# Changes are picked up while the server runs (the file is checked every 2 s,
+# or send `kill -HUP <pid>`). Exceptions: listen, key_file.
+#
+# Users and redirects can be managed with the CLI (comments are preserved):
+#   bfloginauth user add benno --role admin
+#   bfloginauth redirect add https://app.example.com/callback
+
+# Only these exact URLs may be used as redirect_uri.
+# (Must stay above the first [section].)
+allowed_redirects = [
+  "https://app.example.com/callback",
+]
+
+[server]
+listen = "127.0.0.1:8080"
+# Public URL under which nginx exposes the server, including the path prefix
+# (becomes the `iss` claim and the base of all endpoint URLs).
+issuer = "https://example.com/login"
+# `aud` claim used when the app sends no client_id (optional).
+# audience = "example"
+# Ed25519 key; created on first start. Relative to this file.
+key_file = "ed25519.pem"
+access_ttl = "15m"
+refresh_ttl = "30d"
+code_ttl = "60s"
+require_pkce = true
+max_failed_logins = 5
+lockout = "5m"
+title = "Anmelden"
+
+# Users: [users.<name>]
+#   password_hash  Argon2id (via `bfloginauth user add` / `hash-password`)
+#   roles          end up as the `roles` claim in the token
+#   claims         any extra claims (optional)
+#   disabled       true = login blocked (optional)
+#
+# [users.benno]
+# password_hash = "$argon2id$v=19$m=19456,t=2,p=1$..."
+# roles = ["admin"]
+# claims = { email = "benno@example.com", name = "Benno" }

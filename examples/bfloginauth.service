@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Benjamin Benno Falkner
+# SPDX-License-Identifier: MIT
+#
+# /etc/systemd/system/bfloginauth.service
+#
+#   useradd --system --no-create-home --shell /usr/sbin/nologin bfloginauth
+#   install -d -o bfloginauth -g bfloginauth -m 0700 /etc/bfloginauth
+#   sudo -u bfloginauth bfloginauth -c /etc/bfloginauth/bfloginauth.toml init
+#   systemctl enable --now bfloginauth
+
+[Unit]
+Description=bfloginauth login server
+After=network.target
+
+[Service]
+User=bfloginauth
+Group=bfloginauth
+Environment=BFLOGINAUTH_CONFIG=/etc/bfloginauth/bfloginauth.toml
+ExecStart=/usr/local/bin/bfloginauth serve
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/etc/bfloginauth
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
