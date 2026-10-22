@@ -98,16 +98,16 @@ fn default_lockout() -> Duration {
     Duration::from_secs(5 * 60)
 }
 fn default_title() -> String {
-    "Anmelden".into()
+    "Sign in".into()
 }
 
 impl Config {
     /// Read and validate the file; `key_file` is resolved relative to the config file.
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
-            .with_context(|| format!("Config {} kann nicht gelesen werden", path.display()))?;
+            .with_context(|| format!("Cannot read config {}", path.display()))?;
         let mut cfg = Self::parse(&text)
-            .with_context(|| format!("Config {} ist ungültig", path.display()))?;
+            .with_context(|| format!("Invalid config {}", path.display()))?;
         if cfg.server.key_file.is_relative() {
             let base = path.parent().unwrap_or(Path::new("."));
             cfg.server.key_file = base.join(&cfg.server.key_file);
@@ -123,7 +123,7 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        url::Url::parse(&self.server.issuer).context("server.issuer muss eine URL sein")?;
+        url::Url::parse(&self.server.issuer).context("server.issuer must be a URL")?;
         for r in &self.allowed_redirects {
             check_redirect_url(r)?;
         }
@@ -133,10 +133,10 @@ impl Config {
         for (name, user) in &self.users {
             check_username(name)?;
             PasswordHash::new(&user.password_hash)
-                .map_err(|e| anyhow::anyhow!("users.{name}.password_hash ist ungültig: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("users.{name}.password_hash is invalid: {e}"))?;
             for key in user.claims.keys() {
                 if RESERVED_CLAIMS.contains(&key.as_str()) {
-                    bail!("users.{name}.claims.{key} ist reserviert");
+                    bail!("users.{name}.claims.{key} is reserved");
                 }
             }
         }
@@ -150,26 +150,26 @@ impl Config {
 
 pub fn check_username(name: &str) -> Result<()> {
     if name.is_empty() || name.len() > 64 {
-        bail!("Benutzername muss 1–64 Zeichen lang sein");
+        bail!("User name must be 1–64 characters long");
     }
     if !name
         .chars()
         .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '@'))
     {
         bail!(
-            "Benutzername '{name}' enthält ungültige Zeichen (erlaubt: Buchstaben, Ziffern, . _ - @)"
+            "User name '{name}' contains invalid characters (allowed: letters, digits, . _ - @)"
         );
     }
     Ok(())
 }
 
 pub fn check_redirect_url(r: &str) -> Result<()> {
-    let u = url::Url::parse(r).with_context(|| format!("Redirect '{r}' ist keine gültige URL"))?;
+    let u = url::Url::parse(r).with_context(|| format!("Redirect '{r}' is not a valid URL"))?;
     if u.fragment().is_some() {
-        bail!("Redirect '{r}' darf kein #Fragment enthalten");
+        bail!("Redirect '{r}' must not contain a #fragment");
     }
     if !matches!(u.scheme(), "https" | "http") {
-        bail!("Redirect '{r}' muss http oder https sein");
+        bail!("Redirect '{r}' must be http or https");
     }
     Ok(())
 }
@@ -177,9 +177,9 @@ pub fn check_redirect_url(r: &str) -> Result<()> {
 /// An origin is scheme://host[:port] without path or trailing slash,
 /// exactly as browsers send it in the Origin header.
 pub fn check_origin(o: &str) -> Result<()> {
-    let u = url::Url::parse(o).with_context(|| format!("Origin '{o}' ist keine gültige URL"))?;
+    let u = url::Url::parse(o).with_context(|| format!("Origin '{o}' is not a valid URL"))?;
     if !matches!(u.scheme(), "https" | "http") || u.origin().ascii_serialization() != o {
-        bail!("Origin '{o}' muss die Form https://host[:port] haben (ohne Pfad und ohne / am Ende)");
+        bail!("Origin '{o}' must look like https://host[:port] (no path, no trailing /)");
     }
     Ok(())
 }

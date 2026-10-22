@@ -35,7 +35,7 @@ code_ttl = "60s"
 require_pkce = true
 max_failed_logins = 5
 lockout = "5m"
-title = "Anmelden"
+title = "Sign in"
 
 # Users: [users.<name>]
 #   password_hash  Argon2id (via `bfloginauth user add` / `hash-password`)

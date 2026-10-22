@@ -34,7 +34,7 @@ button{width:100%;padding:11px;font:inherit;font-weight:600;color:var(--accent-f
 
 fn layout(title: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">\
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
 <meta name=\"robots\" content=\"noindex\"><title>{t}</title><style>{STYLE}</style></head>\
 <body><main>{body}</main></body></html>",
@@ -75,11 +75,11 @@ pub fn login_page(
         " autofocus"
     };
     body.push_str(&format!(
-        "<label for=\"u\">Benutzername</label>\
+        "<label for=\"u\">User name</label>\
 <input id=\"u\" name=\"username\" autocomplete=\"username\" required value=\"{}\"{autofocus_user}>\
-<label for=\"p\">Passwort</label>\
+<label for=\"p\">Password</label>\
 <input id=\"p\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required{autofocus_pw}>\
-<button type=\"submit\">Anmelden</button></form>",
+<button type=\"submit\">Sign in</button></form>",
         escape(username)
     ));
     layout(title, &body)

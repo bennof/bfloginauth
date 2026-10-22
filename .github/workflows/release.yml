@@ -42,7 +42,7 @@ jobs:
         run: |
           mkdir -p dist/bfloginauth
           cp target/${{ matrix.target }}/release/bfloginauth dist/bfloginauth/
-          cp -r Makefile LICENSE README.md examples nginx dist/bfloginauth/
+          cp -r Makefile LICENSE README.md deploy dist/bfloginauth/
           tar -C dist -czf dist/bfloginauth-${{ matrix.arch }}-linux.tar.gz bfloginauth
           (cd dist && sha256sum bfloginauth-${{ matrix.arch }}-linux.tar.gz > bfloginauth-${{ matrix.arch }}-linux.tar.gz.sha256)
 
@@ -56,10 +56,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+
+      # Browser client as a separate asset, for apps that host it themselves.
+      - run: cp deploy/js/bfloginauth.js dist/
 
       # Tags with a hyphen (v0.1.0-alpha.1) become pre-releases.
       - run: |

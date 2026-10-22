@@ -39,7 +39,7 @@ Config path: `-c path.toml` or `BFLOGINAUTH_CONFIG`; otherwise `./bfloginauth.to
 Log level: `RUST_LOG=debug`.
 On first start, `ed25519.pem` is created next to the config (mode 0600).
 
-A systemd unit is in [examples/bfloginauth.service](examples/bfloginauth.service).
+A systemd unit is in [deploy/bfloginauth.service](deploy/bfloginauth.service).
 On a Linux server, `make && sudo make install` installs the binary to `/usr/local/bin`, creates the
 `bfloginauth` user, `/etc/bfloginauth/bfloginauth.toml` and the systemd unit, and copies the nginx snippets
 to `/etc/nginx/snippets/`. Existing config and snippets are kept. Then: `sudo systemctl enable --now bfloginauth`.
@@ -103,64 +103,79 @@ navigation and needs no CORS.
 Backends can verify the token themselves with the key from `/login/.well-known/jwks.json` (OKP/Ed25519).
 Server metadata is available at `/login/.well-known/oauth-authorization-server`.
 
+## Browser client
+
+[deploy/js/bfloginauth.js](deploy/js/bfloginauth.js) is a small ES module that handles PKCE, the code
+exchange, token refresh and logout. The server also serves it at `/login/bfloginauth.js`; loaded from
+there it uses that URL as the issuer. Each release also has `bfloginauth.js` as a separate download
+for apps that host it themselves (no CORS needed to load it); a copied file needs the `issuer` option.
+
+```js
+import { BfLogin } from "https://example.com/login/bfloginauth.js";
+
+const auth = new BfLogin({
+  redirectUri: "https://apps.example.com/callback",  // must be in allowed_redirects
+  storage: "session",                                 // "session" (default), "local" or "memory"
+  // issuer: "https://example.com/login",            // only for a copied file
+  // clientId: "app1",                                // optional, becomes `aud`
+});
+
+const cb = await auth.handleCallback();   // on the callback page: exchanges ?code=…
+if (cb) location.replace(cb.returnTo);
+
+if (!auth.isLoggedIn()) await auth.login();          // redirects to the login page
+
+auth.user();                               // { name, roles, claims }
+auth.hasRole("admin");
+const res = await auth.fetch("/api/data");  // adds the Bearer token, retries once after 401
+await auth.logout({ redirectTo: "/" });
+auth.onChange((user) => render(user));
+```
+
+The access token is refreshed automatically shortly before it expires. With `storage: "local"` the
+session is shared between tabs and survives a browser restart; refreshes are coordinated between tabs.
+Pages on another origin need that origin in `allowed_origins` (also for loading the script).
+`crypto.subtle` requires HTTPS (or `localhost`).
+
 ## nginx
 
-There are two options:
+`make install` copies these files (existing files are kept):
 
-- **Snippets** to `include`, in [nginx/snippets/](nginx/snippets/) (e.g. copy them to `/etc/nginx/snippets/`):
+| File | Goes to | Purpose |
+|---|---|---|
+| [bfloginauthzone.conf](deploy/nginx/conf.d/bfloginauthzone.conf) | `/etc/nginx/conf.d/` (`http {}` level) | Rate limit zone used by the login snippet |
+| [bfloginauth-login-server.conf](deploy/nginx/snippets/bfloginauth-login-server.conf) | `include` in `server {}` of the login domain | Expose the login server under `/login/` |
+| [bfloginauth-verify-endpoint.conf](deploy/nginx/snippets/bfloginauth-verify-endpoint.conf) | `include` in every `server {}` with protected locations | Internal token check `/login/_auth-verify` |
+| [bfloginauth-verify.conf](deploy/nginx/snippets/bfloginauth-verify.conf) | `include` in `location {}` | Require a valid token and one of the roles in `$bfloginauth_roles` |
 
-  | File | Include in | Purpose |
-  |---|---|---|
-  | `bfloginauth-login-server.conf` | `server {}` of the login domain | Expose the login server under `/login/` |
-  | `bfloginauth-verify-endpoint.conf` | every `server {}` with protected locations | Internal token check `/login/_auth-verify` |
-  | `bfloginauth-verify.conf` | `location {}` | Require a valid token and one of the roles in `$bfloginauth_roles` (`""` = any valid token) |
-
-  ```nginx
-  server {
-      server_name example.com;
-      include snippets/bfloginauth-login-server.conf;
-      include snippets/bfloginauth-verify-endpoint.conf;
-
-      location /teacher/ {
-          include snippets/bfloginauth-verify.conf;
-          proxy_pass http://127.0.0.1:3000/;
-      }
-  }
-
-  server {
-      server_name app.example.com;
-      include snippets/bfloginauth-verify-endpoint.conf;
-
-      location / {
-          set $bfloginauth_roles "";          # any valid token
-          auth_request /login/_auth-verify;
-          proxy_pass http://127.0.0.1:9000/;
-      }
-  }
-  ```
-
-  Set the roles in the location, never at `server {}` level: that would also run during the
-  internal check and clear the roles.
-- **Complete example config:** [examples/nginx.conf](examples/nginx.conf).
-
-Short version without snippets:
+The snippets expect bfloginauth on `127.0.0.1:8080`; adjust them if `[server].listen` differs.
 
 ```nginx
-location = /login/_auth-verify {
-    internal;
-    set $bfloginauth_roles $bfloginauth_roles;
-    uninitialized_variable_warn off;
-    proxy_pass http://127.0.0.1:8080/verify?role=$bfloginauth_roles;
-    proxy_pass_request_body off;
-    proxy_set_header Content-Length "";
-    proxy_set_header Authorization $http_authorization;
+server {
+    server_name example.com;
+    include snippets/bfloginauth-login-server.conf;
+    include snippets/bfloginauth-verify-endpoint.conf;
+
+    location /teacher/ {
+        set $bfloginauth_roles "teacher,admin";   # "" = any valid token
+        auth_request /login/_auth-verify;
+        proxy_pass http://127.0.0.1:3000/;
+    }
 }
-location /teacher/ {
-    set $bfloginauth_roles "teacher,admin";   # "" = any valid token
-    auth_request /login/_auth-verify;
-    proxy_pass http://127.0.0.1:3000/;
+
+server {
+    server_name apps.example.com;
+    include snippets/bfloginauth-verify-endpoint.conf;
+
+    location / {
+        include snippets/bfloginauth-verify.conf;
+        proxy_pass http://127.0.0.1:9000/;
+    }
 }
 ```
+
+Set the roles in the location, never at `server {}` level: that would also run during the
+internal check and clear the roles.
 
 `/verify` reads only `Authorization: Bearer …` and answers `200` (headers `X-Auth-User`, `X-Auth-Roles`),
 `401`, or `403` (role missing). Removed or disabled users get `401` immediately, even if their token has not expired.
@@ -168,7 +183,7 @@ location /teacher/ {
 ## Endpoints
 
 nginx exposes the server under `/login/` and strips the prefix
-(see [bfloginauth-login-server.conf](nginx/snippets/bfloginauth-login-server.conf)).
+(see [bfloginauth-login-server.conf](deploy/nginx/snippets/bfloginauth-login-server.conf)).
 Set `issuer` to the public URL including the prefix, e.g. `https://example.com/login`.
 
 | Method | Public path | Purpose |
@@ -177,6 +192,7 @@ Set `issuer` to the public URL including the prefix, e.g. `https://example.com/l
 | POST | `/login/token` | `grant_type=authorization_code`: exchange a code<br>`grant_type=refresh_token`: get new tokens<br>`grant_type=revoke`: log out |
 | GET | `/login/.well-known/jwks.json` | Public key |
 | GET | `/login/.well-known/oauth-authorization-server` | Metadata |
+| GET | `/login/bfloginauth.js` | Browser client (ES module) |
 
 Internal only (not reachable from outside): `/verify`, called by nginx `auth_request`.
 

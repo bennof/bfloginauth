@@ -15,22 +15,22 @@ use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use crate::config::{Config, check_redirect_url, check_username};
 
-pub const EXAMPLE_CONFIG: &str = include_str!("../examples/bfloginauth.toml");
+pub const EXAMPLE_CONFIG: &str = include_str!("../deploy/bfloginauth.toml");
 
 fn load_doc(path: &Path) -> Result<DocumentMut> {
     let text = std::fs::read_to_string(path).with_context(|| {
         format!(
-            "Config {} kann nicht gelesen werden (erst `init`?)",
+            "Cannot read config {} (run `init` first?)",
             path.display()
         )
     })?;
     text.parse()
-        .with_context(|| format!("Config {} ist kein gültiges TOML", path.display()))
+        .with_context(|| format!("Config {} is not valid TOML", path.display()))
 }
 
 fn save_doc(path: &Path, doc: &DocumentMut) -> Result<()> {
     let text = doc.to_string();
-    Config::parse(&text).context("Änderung würde eine ungültige Config erzeugen")?;
+    Config::parse(&text).context("Change would make the config invalid")?;
     let tmp = path.with_extension("toml.tmp");
     std::fs::write(&tmp, &text)?;
     // Keep the old file's permissions (the hashes are sensitive) and, when run
@@ -49,7 +49,7 @@ fn save_doc(path: &Path, doc: &DocumentMut) -> Result<()> {
 
 pub fn init(path: &Path) -> Result<()> {
     if path.exists() {
-        bail!("{} existiert bereits", path.display());
+        bail!("{} already exists", path.display());
     }
     std::fs::write(path, EXAMPLE_CONFIG)?;
     #[cfg(unix)]
@@ -58,7 +58,7 @@ pub fn init(path: &Path) -> Result<()> {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
     println!(
-        "{} angelegt. Jetzt `user add <name>` ausführen.",
+        "Created {}. Next: `user add <name>`.",
         path.display()
     );
     Ok(())
@@ -73,15 +73,15 @@ pub fn read_password(from_stdin: bool) -> Result<String> {
         std::io::stdin().lock().read_line(&mut line)?;
         line.trim_end_matches(['\r', '\n']).to_string()
     } else {
-        let a = rpassword::prompt_password("Passwort: ")?;
-        let b = rpassword::prompt_password("Passwort wiederholen: ")?;
+        let a = rpassword::prompt_password("Password: ")?;
+        let b = rpassword::prompt_password("Repeat password: ")?;
         if a != b {
-            bail!("Passwörter stimmen nicht überein");
+            bail!("Passwords do not match");
         }
         a
     };
     if pw.chars().count() < 8 {
-        bail!("Passwort muss mindestens 8 Zeichen haben");
+        bail!("Password must have at least 8 characters");
     }
     Ok(pw)
 }
@@ -103,14 +103,14 @@ fn users_table(doc: &mut DocumentMut) -> Result<&mut Table> {
     }
     doc["users"]
         .as_table_mut()
-        .context("`users` muss eine Tabelle sein")
+        .context("`users` must be a table")
 }
 
 fn user_table<'a>(doc: &'a mut DocumentMut, name: &str) -> Result<&'a mut Table> {
     users_table(doc)?
         .get_mut(name)
         .and_then(Item::as_table_mut)
-        .with_context(|| format!("Nutzer '{name}' existiert nicht"))
+        .with_context(|| format!("User '{name}' does not exist"))
 }
 
 fn string_array<'a>(items: impl IntoIterator<Item = &'a String>) -> Array {
@@ -131,7 +131,7 @@ pub fn user_add(path: &Path, name: &str, roles: &[String], from_stdin: bool) -> 
     check_username(name)?;
     let mut doc = load_doc(path)?;
     if users_table(&mut doc)?.contains_key(name) {
-        bail!("Nutzer '{name}' existiert bereits (Passwort ändern: `user passwd {name}`)");
+        bail!("User '{name}' already exists (change password: `user passwd {name}`)");
     }
     let hash = hash_password(&read_password(from_stdin)?)?;
     let mut t = Table::new();
@@ -139,17 +139,17 @@ pub fn user_add(path: &Path, name: &str, roles: &[String], from_stdin: bool) -> 
     t.insert("roles", value(string_array(&clean_roles(roles))));
     users_table(&mut doc)?.insert(name, Item::Table(t));
     save_doc(path, &doc)?;
-    println!("Nutzer '{name}' angelegt.");
+    println!("Added user '{name}'.");
     Ok(())
 }
 
 pub fn user_remove(path: &Path, name: &str) -> Result<()> {
     let mut doc = load_doc(path)?;
     if users_table(&mut doc)?.remove(name).is_none() {
-        bail!("Nutzer '{name}' existiert nicht");
+        bail!("User '{name}' does not exist");
     }
     save_doc(path, &doc)?;
-    println!("Nutzer '{name}' gelöscht.");
+    println!("Removed user '{name}'.");
     Ok(())
 }
 
@@ -159,7 +159,7 @@ pub fn user_passwd(path: &Path, name: &str, from_stdin: bool) -> Result<()> {
     let hash = hash_password(&read_password(from_stdin)?)?;
     user_table(&mut doc, name)?.insert("password_hash", value(hash));
     save_doc(path, &doc)?;
-    println!("Passwort für '{name}' geändert.");
+    println!("Changed password for '{name}'.");
     Ok(())
 }
 
@@ -173,8 +173,8 @@ pub fn user_set_disabled(path: &Path, name: &str, disabled: bool) -> Result<()> 
     }
     save_doc(path, &doc)?;
     println!(
-        "Nutzer '{name}' {}.",
-        if disabled { "gesperrt" } else { "entsperrt" }
+        "User '{name}' {}.",
+        if disabled { "disabled" } else { "enabled" }
     );
     Ok(())
 }
@@ -190,7 +190,7 @@ pub fn user_roles(
     let user = cfg
         .users
         .get(name)
-        .with_context(|| format!("Nutzer '{name}' existiert nicht"))?;
+        .with_context(|| format!("User '{name}' does not exist"))?;
     let mut roles = match set {
         Some(s) => clean_roles(s),
         None => user.roles.clone(),
@@ -215,10 +215,10 @@ pub fn user_roles(
 pub fn user_list(path: &Path) -> Result<()> {
     let cfg = Config::load(path)?;
     if cfg.users.is_empty() {
-        println!("(keine Nutzer)");
+        println!("(no users)");
     }
     for (name, u) in &cfg.users {
-        let flag = if u.disabled { "  [gesperrt]" } else { "" };
+        let flag = if u.disabled { "  [disabled]" } else { "" };
         println!("{name}  [{}]{flag}", u.roles.join(", "));
     }
     Ok(())
@@ -232,7 +232,7 @@ fn redirects(doc: &mut DocumentMut) -> Result<&mut Array> {
     }
     doc["allowed_redirects"]
         .as_array_mut()
-        .context("`allowed_redirects` muss eine Liste sein")
+        .context("`allowed_redirects` must be a list")
 }
 
 /// One URL per line so the file stays readable.
@@ -250,12 +250,12 @@ pub fn redirect_add(path: &Path, url: &str) -> Result<()> {
     let mut doc = load_doc(path)?;
     let arr = redirects(&mut doc)?;
     if arr.iter().any(|v| v.as_str() == Some(url)) {
-        bail!("'{url}' ist bereits erlaubt");
+        bail!("'{url}' is already allowed");
     }
     arr.push(url);
     format_multiline(arr);
     save_doc(path, &doc)?;
-    println!("Redirect '{url}' hinzugefügt.");
+    println!("Added redirect '{url}'.");
     Ok(())
 }
 
@@ -265,18 +265,18 @@ pub fn redirect_remove(path: &Path, url: &str) -> Result<()> {
     let before = arr.len();
     arr.retain(|v| v.as_str() != Some(url));
     if arr.len() == before {
-        bail!("'{url}' ist nicht in der Liste");
+        bail!("'{url}' is not in the list");
     }
     format_multiline(arr);
     save_doc(path, &doc)?;
-    println!("Redirect '{url}' entfernt.");
+    println!("Removed redirect '{url}'.");
     Ok(())
 }
 
 pub fn redirect_list(path: &Path) -> Result<()> {
     let cfg = Config::load(path)?;
     if cfg.allowed_redirects.is_empty() {
-        println!("(keine Redirects)");
+        println!("(no redirects)");
     }
     for r in &cfg.allowed_redirects {
         println!("{r}");

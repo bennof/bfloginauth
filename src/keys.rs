@@ -26,10 +26,10 @@ impl Keys {
     pub fn load_or_create(path: &Path) -> Result<Self> {
         let signing = if path.exists() {
             let pem = std::fs::read_to_string(path).with_context(|| {
-                format!("Schlüssel {} kann nicht gelesen werden", path.display())
+                format!("Cannot read key {}", path.display())
             })?;
             SigningKey::from_pkcs8_pem(&pem)
-                .map_err(|e| anyhow::anyhow!("Schlüssel {} ist ungültig: {e}", path.display()))?
+                .map_err(|e| anyhow::anyhow!("Invalid key {}: {e}", path.display()))?
         } else {
             let mut seed = [0u8; 32];
             rand::rngs::OsRng.fill_bytes(&mut seed);
@@ -38,7 +38,7 @@ impl Keys {
                 .to_pkcs8_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)
                 .map_err(|e| anyhow::anyhow!("PEM-Export fehlgeschlagen: {e}"))?;
             write_private(path, pem.as_bytes())?;
-            tracing::info!("Neuen Ed25519-Schlüssel erzeugt: {}", path.display());
+            tracing::info!("Created new Ed25519 key: {}", path.display());
             key
         };
         let verifying = signing.verifying_key();
@@ -108,7 +108,7 @@ fn write_private(path: &Path, data: &[u8]) -> Result<()> {
     }
     let mut f = opts
         .open(path)
-        .with_context(|| format!("Schlüssel {} kann nicht geschrieben werden", path.display()))?;
+        .with_context(|| format!("Cannot write key {}", path.display()))?;
     f.write_all(data)?;
     Ok(())
 }

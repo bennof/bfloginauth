@@ -7,6 +7,7 @@
 //! - `POST /token`          exchange a code or refresh token for tokens;
 //!   `grant_type=revoke` logs out (revokes the session)
 //! - `GET /.well-known/jwks.json`, `/.well-known/oauth-authorization-server`
+//! - `GET /bfloginauth.js`  browser client (ES module)
 //! - `* /verify`            internal, for nginx `auth_request` (Bearer header)
 
 use std::path::PathBuf;
@@ -53,12 +54,12 @@ impl AppState {
         let new = Config::load(&self.config_path)?;
         let old = self.cfg();
         if new.server.listen != old.server.listen || new.server.key_file != old.server.key_file {
-            tracing::warn!("Änderungen an listen/key_file werden erst nach einem Neustart wirksam");
+            tracing::warn!("Changes to listen/key_file take effect only after a restart");
         }
         tracing::info!(
             users = new.users.len(),
             redirects = new.allowed_redirects.len(),
-            "Config neu geladen"
+            "Config reloaded"
         );
         *self.config.write().unwrap() = Arc::new(new);
         Ok(())
@@ -78,7 +79,7 @@ pub async fn run(config_path: PathBuf) -> Result<()> {
         kid = %keys.kid,
         users = cfg.users.len(),
         redirects = cfg.allowed_redirects.len(),
-        "Starte bfloginauth"
+        "Starting bfloginauth"
     );
 
     let state = Arc::new(AppState {
@@ -98,6 +99,7 @@ pub async fn run(config_path: PathBuf) -> Result<()> {
         .route("/token", post(token))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/.well-known/oauth-authorization-server", get(metadata))
+        .route("/bfloginauth.js", get(client_js))
         .layer(middleware::from_fn_with_state(state.clone(), cors));
 
     let app = Router::new()
@@ -108,8 +110,8 @@ pub async fn run(config_path: PathBuf) -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&listen)
         .await
-        .with_context(|| format!("Kann nicht auf {listen} lauschen"))?;
-    tracing::info!("Lausche auf http://{listen}");
+        .with_context(|| format!("Cannot listen on {listen}"))?;
+    tracing::info!("Listening on http://{listen}");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -128,7 +130,7 @@ async fn watch_config(state: Arc<AppState>) {
         if now.is_some() && now != last {
             last = now;
             if let Err(e) = state.reload() {
-                tracing::error!("Config nicht übernommen, alte bleibt aktiv: {e:#}");
+                tracing::error!("Config not applied, keeping the previous one: {e:#}");
             }
         }
         if last_cleanup.elapsed().as_secs() >= 60 {
@@ -147,7 +149,7 @@ async fn reload_on_sighup(state: Arc<AppState>) {
     };
     while sig.recv().await.is_some() {
         if let Err(e) = state.reload() {
-            tracing::error!("Config nicht übernommen, alte bleibt aktiv: {e:#}");
+            tracing::error!("Config not applied, keeping the previous one: {e:#}");
         }
     }
 }
@@ -162,7 +164,7 @@ async fn shutdown_signal() {
     }
     #[cfg(not(unix))]
     let _ = ctrl_c.await;
-    tracing::info!("Fahre herunter");
+    tracing::info!("Shutting down");
 }
 
 fn now_secs() -> u64 {
@@ -306,11 +308,11 @@ fn with_query(base: &str, pairs: &[(&str, Option<&str>)]) -> String {
 
 fn validate(cfg: &Config, p: &AuthorizeParams) -> Result<Validated, AuthzError> {
     let Some(redirect_uri) = p.redirect_uri.clone() else {
-        return Err(AuthzError::Page("Parameter redirect_uri fehlt.".into()));
+        return Err(AuthzError::Page("Parameter redirect_uri is missing.".into()));
     };
     if !cfg.allowed_redirects.contains(&redirect_uri) {
         return Err(AuthzError::Page(
-            "Diese redirect_uri ist nicht erlaubt.".into(),
+            "This redirect_uri is not allowed.".into(),
         ));
     }
     let fail = |error: &str, desc: &str| {
@@ -393,8 +395,8 @@ async fn authorize_post(State(st): St, Form(f): Form<LoginForm>) -> Response {
     };
 
     if st.store.lock().unwrap().is_locked(&username) {
-        tracing::warn!(user = %username, "Login gesperrt (zu viele Fehlversuche)");
-        return retry("Zu viele Fehlversuche. Bitte später erneut versuchen.");
+        tracing::warn!(user = %username, "Login locked (too many failed attempts)");
+        return retry("Too many failed attempts. Please try again later.");
     }
 
     let user = cfg.users.get(&username).filter(|u| !u.disabled);
@@ -415,13 +417,13 @@ async fn authorize_post(State(st): St, Form(f): Form<LoginForm>) -> Response {
     .unwrap_or(false);
 
     if !ok || user.is_none() {
-        tracing::warn!(user = %username, "Login fehlgeschlagen");
+        tracing::warn!(user = %username, "Login failed");
         st.store.lock().unwrap().record_failure(
             &username,
             cfg.server.max_failed_logins,
             cfg.server.lockout,
         );
-        return retry("Benutzername oder Passwort falsch.");
+        return retry("Wrong user name or password.");
     }
 
     let code = {
@@ -435,7 +437,7 @@ async fn authorize_post(State(st): St, Form(f): Form<LoginForm>) -> Response {
             expires: Instant::now() + cfg.server.code_ttl,
         })
     };
-    tracing::info!(user = %username, redirect = %v.redirect_uri, "Login erfolgreich");
+    tracing::info!(user = %username, redirect = %v.redirect_uri, "Login successful");
     let target = with_query(
         &v.redirect_uri,
         &[("code", Some(&code)), ("state", v.state.as_deref())],
@@ -521,7 +523,7 @@ async fn token(State(st): St, Form(req): Form<TokenRequest>) -> Response {
                     return invalid_grant("invalid or expired refresh_token");
                 }
                 Err(RefreshError::Reused) => {
-                    tracing::warn!("Wiederverwendetes Refresh-Token: Sitzung widerrufen");
+                    tracing::warn!("Reused refresh token: session revoked");
                     return invalid_grant("refresh_token reused; session revoked");
                 }
             };
@@ -539,7 +541,7 @@ async fn token(State(st): St, Form(req): Form<TokenRequest>) -> Response {
             if let Some(rt) = req.refresh_token.as_deref()
                 && let Some(user) = st.store.lock().unwrap().revoke(rt)
             {
-                tracing::info!(user = %user, "Sitzung widerrufen (Logout)");
+                tracing::info!(user = %user, "Session revoked (logout)");
             }
             no_store(StatusCode::OK.into_response())
         }
@@ -674,6 +676,20 @@ async fn verify(State(st): St, Query(q): Query<VerifyParams>, headers: HeaderMap
 }
 
 // ---------------------------------------------------------------- Discovery
+
+/// Browser client; apps import it as an ES module (needs CORS for other origins).
+const CLIENT_JS: &str = include_str!("../deploy/js/bfloginauth.js");
+
+async fn client_js() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        CLIENT_JS,
+    )
+        .into_response()
+}
 
 async fn jwks(State(st): St) -> Response {
     let mut res = Json(st.keys.jwks()).into_response();
