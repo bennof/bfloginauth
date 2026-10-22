@@ -61,6 +61,10 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+      # Tags with a hyphen (v0.1.0-alpha.1) become pre-releases.
+      - run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes $flags
         env:
           GH_TOKEN: ${{ github.token }}

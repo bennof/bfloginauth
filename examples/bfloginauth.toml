@@ -13,6 +13,13 @@ allowed_redirects = [
   "https://app.example.com/callback",
 ]
 
+# Browser origins (scheme://host[:port], no path) that may call /token and
+# /.well-known directly (CORS). Not needed for server-side apps.
+allowed_origins = [
+  "https://example.com",
+  "https://apps.example.com",
+]
+
 [server]
 listen = "127.0.0.1:8080"
 # Public URL under which nginx exposes the server, including the path prefix

@@ -16,8 +16,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use argon2::password_hash::{PasswordHasher, SaltString};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
-use axum::extract::{Query, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::extract::{Query, Request, State};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{any, get, post};
 use axum::{Form, Json, Router};
@@ -92,12 +93,17 @@ pub async fn run(config_path: PathBuf) -> Result<()> {
     #[cfg(unix)]
     tokio::spawn(reload_on_sighup(state.clone()));
 
-    let app = Router::new()
-        .route("/authorize", get(authorize_get).post(authorize_post))
+    // Endpoints that browser apps on other origins call directly.
+    let cors_routes = Router::new()
         .route("/token", post(token))
-        .route("/verify", any(verify))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/.well-known/oauth-authorization-server", get(metadata))
+        .layer(middleware::from_fn_with_state(state.clone(), cors));
+
+    let app = Router::new()
+        .route("/authorize", get(authorize_get).post(authorize_post))
+        .route("/verify", any(verify))
+        .merge(cors_routes)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&listen)
@@ -164,6 +170,45 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+// ---------------------------------------------------------------- CORS
+
+/// Adds CORS headers for origins listed in `allowed_origins` and answers
+/// preflight requests. No credentials: tokens travel in the request body or
+/// the Authorization header, never in cookies.
+async fn cors(State(st): St, req: Request, next: Next) -> Response {
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .filter(|o| st.cfg().allowed_origins.iter().any(|a| a == o))
+        .and_then(|o| HeaderValue::from_str(o).ok());
+
+    let preflight = req.method() == Method::OPTIONS;
+    let mut res = if preflight {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        next.run(req).await
+    };
+
+    let h = res.headers_mut();
+    h.append(header::VARY, HeaderValue::from_static("Origin"));
+    if let Some(origin) = origin {
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        if preflight {
+            h.insert(
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+                HeaderValue::from_static("GET, POST, OPTIONS"),
+            );
+            h.insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                HeaderValue::from_static("Content-Type, Authorization"),
+            );
+            h.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+        }
+    }
+    res
 }
 
 // ---------------------------------------------------------------- /authorize

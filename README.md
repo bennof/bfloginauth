@@ -80,6 +80,19 @@ A running server picks up changes within about 2 s (or immediately on `kill -HUP
 `redirect_uri` must match an entry in `allowed_redirects` **exactly**.
 `client_id` can be any string and becomes the `aud` claim. Without `client_id`, `server.audience` is used.
 
+### CORS
+
+Browser apps on other origins (e.g. `https://apps.example.com`) that call `/token` or `/.well-known/…`
+directly need their origin listed in the config:
+
+```toml
+allowed_origins = ["https://example.com", "https://apps.example.com"]
+```
+
+An origin is `scheme://host[:port]`, without path or trailing slash. Other origins get no CORS headers,
+so the browser blocks the response. Changes apply without restart. `/authorize` is a normal page
+navigation and needs no CORS.
+
 ### Access token
 
 ```json

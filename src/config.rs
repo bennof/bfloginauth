@@ -21,6 +21,9 @@ pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
     pub allowed_redirects: Vec<String>,
+    /// Browser origins allowed to call /token and /.well-known via CORS.
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
     #[serde(default)]
     pub users: BTreeMap<String, User>,
 }
@@ -124,6 +127,9 @@ impl Config {
         for r in &self.allowed_redirects {
             check_redirect_url(r)?;
         }
+        for o in &self.allowed_origins {
+            check_origin(o)?;
+        }
         for (name, user) in &self.users {
             check_username(name)?;
             PasswordHash::new(&user.password_hash)
@@ -164,6 +170,16 @@ pub fn check_redirect_url(r: &str) -> Result<()> {
     }
     if !matches!(u.scheme(), "https" | "http") {
         bail!("Redirect '{r}' muss http oder https sein");
+    }
+    Ok(())
+}
+
+/// An origin is scheme://host[:port] without path or trailing slash,
+/// exactly as browsers send it in the Origin header.
+pub fn check_origin(o: &str) -> Result<()> {
+    let u = url::Url::parse(o).with_context(|| format!("Origin '{o}' ist keine gültige URL"))?;
+    if !matches!(u.scheme(), "https" | "http") || u.origin().ascii_serialization() != o {
+        bail!("Origin '{o}' muss die Form https://host[:port] haben (ohne Pfad und ohne / am Ende)");
     }
     Ok(())
 }
