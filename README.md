@@ -10,6 +10,18 @@ A small login server in Rust that works like an OAuth 2 service:
 - Users, roles, claims and allowed redirects in **one TOML file**, reloaded without restart
 - CLI to manage users and redirects
 
+## Install from a release
+
+Static Linux binaries (x86_64, aarch64) are attached to each [release](https://github.com/bennof/bfloginauth/releases).
+No Rust needed on the server:
+
+```sh
+curl -L https://github.com/bennof/bfloginauth/releases/latest/download/bfloginauth-$(uname -m)-linux.tar.gz | tar xz
+cd bfloginauth && sudo make install
+```
+
+New releases are built by GitHub Actions when a tag is pushed: `git tag v0.1.0 && git push origin v0.1.0`.
+
 ## Quick start
 
 ```sh

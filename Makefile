@@ -2,6 +2,8 @@
 
 BIN    := /usr/local/bin/bfloginauth
 CONFIG := /etc/bfloginauth/bfloginauth.toml
+# Release archive: binary next to the Makefile; source checkout: cargo build output.
+SRC    := $(firstword $(wildcard bfloginauth) target/release/bfloginauth)
 
 all: build
 
@@ -17,9 +19,9 @@ lint:
 clean:
 	cargo clean
 
-# make && sudo make install
+# Source: make && sudo make install / release archive: sudo make install
 install:
-	install -m 0755 target/release/bfloginauth $(BIN)
+	install -m 0755 $(SRC) $(BIN)
 	id bfloginauth >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin bfloginauth
 	install -d -o bfloginauth -g bfloginauth -m 0700 /etc/bfloginauth
 	test -f $(CONFIG) || sudo -u bfloginauth $(BIN) -c $(CONFIG) init
