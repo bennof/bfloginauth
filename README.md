@@ -25,7 +25,7 @@ cd bfloginauth && sudo make install
 ```
 
 `latest` only points to stable releases. For a pre-release (`-alpha`, `-beta`, `-rc`) use its tag:
-`…/releases/download/v0.1.0-alpha.3/bfloginauth-$(uname -m)-linux.tar.gz`.
+`…/releases/download/v0.1.0-beta.1/bfloginauth-$(uname -m)-linux.tar.gz`.
 
 `make install`:
 
@@ -269,7 +269,7 @@ Releases are built by GitHub Actions when a `v*` tag is pushed. Set the same ver
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Tags with a hyphen (`v0.1.0-alpha.3`) become pre-releases. `gh workflow run release` builds without
+Tags with a hyphen (`v0.1.0-beta.1`) become pre-releases. `gh workflow run release` builds without
 publishing.
 
 ## Limitations

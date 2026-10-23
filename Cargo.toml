@@ -1,6 +1,6 @@
 [package]
 name = "bfloginauth"
-version = "0.1.0-alpha.4"
+version = "0.1.0-beta.1"
 edition = "2024"
 description = "Small OAuth2-style login server (authorization code + PKCE, EdDSA JWT, refresh token rotation) for nginx"
 license = "MIT"
