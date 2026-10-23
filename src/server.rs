@@ -207,7 +207,10 @@ async fn cors(State(st): St, req: Request, next: Next) -> Response {
                 header::ACCESS_CONTROL_ALLOW_HEADERS,
                 HeaderValue::from_static("Content-Type, Authorization"),
             );
-            h.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+            h.insert(
+                header::ACCESS_CONTROL_MAX_AGE,
+                HeaderValue::from_static("600"),
+            );
         }
     }
     res
@@ -308,12 +311,12 @@ fn with_query(base: &str, pairs: &[(&str, Option<&str>)]) -> String {
 
 fn validate(cfg: &Config, p: &AuthorizeParams) -> Result<Validated, AuthzError> {
     let Some(redirect_uri) = p.redirect_uri.clone() else {
-        return Err(AuthzError::Page("Parameter redirect_uri is missing.".into()));
+        return Err(AuthzError::Page(
+            "Parameter redirect_uri is missing.".into(),
+        ));
     };
     if !cfg.allowed_redirects.contains(&redirect_uri) {
-        return Err(AuthzError::Page(
-            "This redirect_uri is not allowed.".into(),
-        ));
+        return Err(AuthzError::Page("This redirect_uri is not allowed.".into()));
     }
     let fail = |error: &str, desc: &str| {
         AuthzError::Redirect(with_query(

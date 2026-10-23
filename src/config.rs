@@ -106,8 +106,8 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("Cannot read config {}", path.display()))?;
-        let mut cfg = Self::parse(&text)
-            .with_context(|| format!("Invalid config {}", path.display()))?;
+        let mut cfg =
+            Self::parse(&text).with_context(|| format!("Invalid config {}", path.display()))?;
         if cfg.server.key_file.is_relative() {
             let base = path.parent().unwrap_or(Path::new("."));
             cfg.server.key_file = base.join(&cfg.server.key_file);
@@ -156,9 +156,7 @@ pub fn check_username(name: &str) -> Result<()> {
         .chars()
         .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '@'))
     {
-        bail!(
-            "User name '{name}' contains invalid characters (allowed: letters, digits, . _ - @)"
-        );
+        bail!("User name '{name}' contains invalid characters (allowed: letters, digits, . _ - @)");
     }
     Ok(())
 }

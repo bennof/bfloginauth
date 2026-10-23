@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Benjamin Benno Falkner
 // SPDX-License-Identifier: MIT
 
-//! Embedded login page (no JavaScript).
+//! Login and error page, built from the templates in deploy/html/ (embedded at build time).
+
+const STYLE: &str = include_str!("../deploy/html/style.css");
+const LOGIN: &str = include_str!("../deploy/html/login.html");
+const ERROR: &str = include_str!("../deploy/html/error.html");
 
 pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -18,28 +22,27 @@ pub fn escape(s: &str) -> String {
     out
 }
 
-const STYLE: &str = r#"
-:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--muted:#5d6577;--border:#d5d9e0;--accent:#2f5bd3;--accent-fg:#fff;--err-bg:#fdecec;--err-fg:#9b1c1c}
-@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;--fg:#e6e8ec;--muted:#9aa2b1;--border:#343a45;--accent:#6b8cff;--accent-fg:#0b0d12;--err-bg:#3a1f22;--err-fg:#ffb4b4}}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
-main{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:32px 28px}
-h1{margin:0 0 24px;font-size:22px;font-weight:600}
-label{display:block;font-size:14px;color:var(--muted);margin:0 0 6px}
-input{width:100%;padding:10px 12px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:8px;margin:0 0 16px}
-input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
-button{width:100%;padding:11px;font:inherit;font-weight:600;color:var(--accent-fg);background:var(--accent);border:0;border-radius:8px;cursor:pointer;margin-top:8px}
-.err{background:var(--err-bg);color:var(--err-fg);padding:10px 12px;border-radius:8px;margin:0 0 16px;font-size:14px}
-"#;
-
-fn layout(title: &str, body: &str) -> String {
-    format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-<meta name=\"robots\" content=\"noindex\"><title>{t}</title><style>{STYLE}</style></head>\
-<body><main>{body}</main></body></html>",
-        t = escape(title)
-    )
+/// Replace `{{name}}` placeholders in one pass. Values are inserted as they are
+/// (escape them first) and are not scanned again. Unknown placeholders stay.
+fn render(template: &str, vars: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(template.len() + 1024);
+    let mut rest = template;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            rest = &rest[start..];
+            break;
+        };
+        let key = after[..end].trim();
+        match vars.iter().find(|(k, _)| *k == key) {
+            Some((_, v)) => out.push_str(v),
+            None => out.push_str(&rest[start..start + end + 4]),
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    out
 }
 
 pub fn login_page(
@@ -48,50 +51,68 @@ pub fn login_page(
     username: &str,
     error: Option<&str>,
 ) -> String {
-    let mut body = format!("<h1>{}</h1>", escape(title));
-    if let Some(e) = error {
-        body.push_str(&format!(
-            "<p class=\"err\" role=\"alert\">{}</p>",
-            escape(e)
-        ));
-    }
-    // No action attribute: the form posts to the same URL, which also works under an nginx path prefix.
-    body.push_str("<form method=\"post\">");
-    for (k, v) in hidden {
-        body.push_str(&format!(
-            "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
-            escape(k),
-            escape(v)
-        ));
-    }
-    let autofocus_user = if username.is_empty() {
-        " autofocus"
+    let error = error
+        .map(|e| format!("<p class=\"err\" role=\"alert\">{}</p>", escape(e)))
+        .unwrap_or_default();
+    let hidden: String = hidden
+        .iter()
+        .map(|(k, v)| {
+            format!(
+                "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
+                escape(k),
+                escape(v)
+            )
+        })
+        .collect();
+    let (focus_user, focus_password) = if username.is_empty() {
+        (" autofocus", "")
     } else {
-        ""
+        ("", " autofocus")
     };
-    let autofocus_pw = if username.is_empty() {
-        ""
-    } else {
-        " autofocus"
-    };
-    body.push_str(&format!(
-        "<label for=\"u\">User name</label>\
-<input id=\"u\" name=\"username\" autocomplete=\"username\" required value=\"{}\"{autofocus_user}>\
-<label for=\"p\">Password</label>\
-<input id=\"p\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required{autofocus_pw}>\
-<button type=\"submit\">Sign in</button></form>",
-        escape(username)
-    ));
-    layout(title, &body)
+    render(
+        LOGIN,
+        &[
+            ("title", &escape(title)),
+            ("style", STYLE),
+            ("error", &error),
+            ("hidden", &hidden),
+            ("username", &escape(username)),
+            ("focus_user", focus_user),
+            ("focus_password", focus_password),
+        ],
+    )
 }
 
 pub fn error_page(title: &str, message: &str) -> String {
-    layout(
-        title,
-        &format!(
-            "<h1>{}</h1><p class=\"err\" role=\"alert\">{}</p>",
-            escape(title),
-            escape(message)
-        ),
+    render(
+        ERROR,
+        &[
+            ("title", &escape(title)),
+            ("style", STYLE),
+            ("message", &escape(message)),
+        ],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_are_not_rendered_again() {
+        let out = render("a {{x}} b {{y}}", &[("x", "{{y}}"), ("y", "Y")]);
+        assert_eq!(out, "a {{y}} b Y");
+    }
+
+    #[test]
+    fn unknown_and_unclosed_placeholders_stay() {
+        assert_eq!(render("{{nope}} {{open", &[]), "{{nope}} {{open");
+    }
+
+    #[test]
+    fn login_page_escapes_input() {
+        let page = login_page("T", &[("state", "\"><script>")], "<b>", Some("<x>"));
+        assert!(!page.contains("<script>") && !page.contains("<b>") && !page.contains("<x>"));
+        assert!(!page.contains("{{"), "all placeholders filled");
+    }
 }

@@ -18,12 +18,8 @@ use crate::config::{Config, check_redirect_url, check_username};
 pub const EXAMPLE_CONFIG: &str = include_str!("../deploy/bfloginauth.toml");
 
 fn load_doc(path: &Path) -> Result<DocumentMut> {
-    let text = std::fs::read_to_string(path).with_context(|| {
-        format!(
-            "Cannot read config {} (run `init` first?)",
-            path.display()
-        )
-    })?;
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("Cannot read config {} (run `init` first?)", path.display()))?;
     text.parse()
         .with_context(|| format!("Config {} is not valid TOML", path.display()))
 }
@@ -57,10 +53,7 @@ pub fn init(path: &Path) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
-    println!(
-        "Created {}. Next: `user add <name>`.",
-        path.display()
-    );
+    println!("Created {}. Next: `user add <name>`.", path.display());
     Ok(())
 }
 

@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Copyright (c) 2026 Benjamin Benno Falkner, SPDX-License-Identifier: MIT -->
+<!-- Placeholders (in double braces): title style error hidden username focus_user focus_password -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{title}}</title>
+<style>{{style}}</style>
+</head>
+<body>
+<main>
+<h1>{{title}}</h1>
+{{error}}
+<!-- No action attribute: posts to the same URL, also under an nginx path prefix. -->
+<form method="post">
+{{hidden}}
+<label for="u">User name</label>
+<input id="u" name="username" autocomplete="username" required value="{{username}}"{{focus_user}}>
+<label for="p">Password</label>
+<input id="p" name="password" type="password" autocomplete="current-password" required{{focus_password}}>
+<button type="submit">Sign in</button>
+</form>
+</main>
+</body>
+</html>

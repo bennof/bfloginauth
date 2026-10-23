@@ -25,9 +25,8 @@ impl Keys {
     /// Load the key, or create a new one (file mode 0600).
     pub fn load_or_create(path: &Path) -> Result<Self> {
         let signing = if path.exists() {
-            let pem = std::fs::read_to_string(path).with_context(|| {
-                format!("Cannot read key {}", path.display())
-            })?;
+            let pem = std::fs::read_to_string(path)
+                .with_context(|| format!("Cannot read key {}", path.display()))?;
             SigningKey::from_pkcs8_pem(&pem)
                 .map_err(|e| anyhow::anyhow!("Invalid key {}: {e}", path.display()))?
         } else {
